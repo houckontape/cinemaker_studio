@@ -9,6 +9,7 @@ camera_domain = { path = "../core/domain/camera_domain" }
 camera_ports = { path = "../core/ports/camera_ports" }
 camera_usecases = { path = "../core/usecases/camera_usecases" }
 camera_adapter_windows = { path = "../adapters/camera_adapter_windows" }
+camera_adapter_canon = { path = "../adapters/camera_adapter_canon" }
 eframe = "0.36.1"
 egui = "0.36.1"
 windows = { version = "0.62.2", features = [

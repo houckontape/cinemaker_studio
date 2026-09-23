@@ -1,18 +1,20 @@
 [package]
 name = "camera_adapter_canon"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [lib]
 name = "camera_adapter_canon"
 crate-type = ["rlib"]
 
 [dependencies]
+camera_domain = { path = "../../core/domain/camera_domain" }
+camera_ports = { path = "../../core/ports/camera_ports" }
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 thiserror = "2.0.20"
 log = "0.4"
 
 [build-dependencies]
-bindgen = "0.73.2"
 
 [features]
 default = ["windows"]

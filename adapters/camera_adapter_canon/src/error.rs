@@ -1,32 +1,34 @@
 use thiserror::Error;
+use crate::edsdk_sys::EdsError;
 
-#[derive(Debug, Error)]
+#[derive(Error, Debug)]
 pub enum CanonError {
-    #[error("EDSDK error code: {0}")]
-    EDSDKError(i32),
+    #[error("Erreur d'initialisation du SDK Canon (code: {0:#x})")]
+    SdkInitFailed(EdsError),
 
-    #[error("No camera found")]
-    NoCamera,
+    #[error("Aucune caméra Canon détectée")]
+    CameraNotFound,
 
-    #[error("Invalid index")]
-    InvalidIndex,
+    #[error("Index de caméra invalide: {0}")]
+    InvalidCameraIndex(usize),
 
-    #[error("FFI null pointer")]
-    NullPointer,
+    #[error("Erreur lors de l'ouverture de la session Canon (code: {0:#x})")]
+    SessionError(EdsError),
 
-    #[error("LiveView not available")]
-    LiveViewUnavailable,
+    #[error("Erreur d'accès à la propriété Canon (code: {0:#x})")]
+    PropertyError(EdsError),
 
-    #[error("Other error: {0}")]
-    Other(String),
+    #[error("Erreur LiveView Canon (code: {0:#x})")]
+    LiveViewError(EdsError),
+
+    #[error("Erreur de décodage de l'image JPEG LiveView: {0}")]
+    ImageDecodeError(String),
+
+    #[error("Erreur EDSDK générique (code: {0:#x})")]
+    EdsError(EdsError),
+
+    #[error("Caméra Canon non connectée ou session fermée")]
+    NotConnected,
 }
 
-pub type Result<T> = std::result::Result<T, CanonError>;
-
-pub fn check_edsdk(code: i32) -> Result<()> {
-    if code == 0 {
-        Ok(())
-    } else {
-        Err(CanonError::EDSDKError(code))
-    }
-}
+pub type CanonResult<T> = Result<T, CanonError>;

@@ -1,15 +1,14 @@
-use camera_adapter_windows::MediaFoundationLiveViewAdapter;
 use camera_domain::{Camera, FrameBuffer};
 use camera_ports::{CameraLiveView, CameraPort};
 use camera_usecases::{DetectCameraUseCase, LiveViewUseCase};
-use crate::adapters::camera_adapter::CameraAdapter;
+use crate::adapters::camera_adapter::{CameraAdapter, UnifiedLiveViewAdapter};
 use crate::components::camera_panel::CameraPanel;
 use crate::liveview_panel::LiveViewPanel;
 use eframe::App;
 use egui::{TextureHandle, Ui};
 use std::sync::{Arc, Mutex};
 
-pub struct WorkspaceApp<P: CameraPort = CameraAdapter, L: CameraLiveView = MediaFoundationLiveViewAdapter> {
+pub struct WorkspaceApp<P: CameraPort = CameraAdapter, L: CameraLiveView = UnifiedLiveViewAdapter> {
     camera_port: P,
     liveview_usecase: LiveViewUseCase<L>,
     detected_camera: Option<Camera>,
@@ -17,10 +16,10 @@ pub struct WorkspaceApp<P: CameraPort = CameraAdapter, L: CameraLiveView = Media
     texture: Option<TextureHandle>,
 }
 
-impl Default for WorkspaceApp<CameraAdapter, MediaFoundationLiveViewAdapter> {
+impl Default for WorkspaceApp<CameraAdapter, UnifiedLiveViewAdapter> {
     fn default() -> Self {
         let adapter = CameraAdapter::new();
-        let liveview_adapter = MediaFoundationLiveViewAdapter::new();
+        let liveview_adapter = UnifiedLiveViewAdapter::new();
         Self::new_with_ports(adapter, liveview_adapter)
     }
 }
@@ -45,8 +44,8 @@ impl<P: CameraPort, L: CameraLiveView> WorkspaceApp<P, L> {
         }
     }
 
-    pub fn new(camera_port: P) -> WorkspaceApp<P, MediaFoundationLiveViewAdapter> {
-        let liveview_adapter = MediaFoundationLiveViewAdapter::new();
+    pub fn new(camera_port: P) -> WorkspaceApp<P, UnifiedLiveViewAdapter> {
+        let liveview_adapter = UnifiedLiveViewAdapter::new();
         WorkspaceApp::new_with_ports(camera_port, liveview_adapter)
     }
 

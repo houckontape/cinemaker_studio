@@ -4,7 +4,7 @@ pub mod canon_adapter;
 pub mod liveview;
 pub mod capture;
 
-pub use canon_adapter::{CanonCameraAdapter, DetectedCamera};
-pub use liveview::LiveViewStream;
+pub use canon_adapter::{CanonCameraAdapter, DetectedCamera, CanonSdk};
+pub use liveview::{CanonLiveViewAdapter, LiveViewStream};
 pub use capture::CaptureController;
-pub use error::CanonError;
+pub use error::{CanonError, CanonResult};

@@ -1,5 +1,7 @@
-use camera_domain::{Camera, CameraKind};
-use camera_ports::CameraPort;
+use camera_adapter_canon::{CanonCameraAdapter, CanonLiveViewAdapter};
+use camera_adapter_windows::MediaFoundationLiveViewAdapter;
+use camera_domain::{Camera, CameraKind, FrameBuffer};
+use camera_ports::{CameraLiveView, CameraPort};
 use windows::core::PWSTR;
 use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Com::*;
@@ -14,10 +16,8 @@ impl CameraAdapter {
         }
         Self
     }
-}
 
-impl CameraPort for CameraAdapter {
-    fn list_cameras(&self) -> Vec<Camera> {
+    fn list_windows_cameras(&self) -> Vec<Camera> {
         unsafe {
             let mut attributes: Option<IMFAttributes> = None;
             if MFCreateAttributes(&mut attributes, 1).is_err() {
@@ -110,6 +110,63 @@ impl CameraPort for CameraAdapter {
 
             cameras
         }
+    }
+}
+
+impl CameraPort for CameraAdapter {
+    fn list_cameras(&self) -> Vec<Camera> {
+        let mut cameras = Vec::new();
+
+        // 1. Détection prioritaire des caméras Canon (USB via EDSDK)
+        let canon_adapter = CanonCameraAdapter::new();
+        let canon_cameras = canon_adapter.list_cameras();
+        cameras.extend(canon_cameras);
+
+        // 2. Détection des caméras Windows Media Foundation
+        let mf_cameras = self.list_windows_cameras();
+        cameras.extend(mf_cameras);
+
+        cameras
+    }
+}
+
+pub struct UnifiedLiveViewAdapter {
+    canon: CanonLiveViewAdapter,
+    windows: MediaFoundationLiveViewAdapter,
+}
+
+impl Default for UnifiedLiveViewAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl UnifiedLiveViewAdapter {
+    pub fn new() -> Self {
+        Self {
+            canon: CanonLiveViewAdapter::new(),
+            windows: MediaFoundationLiveViewAdapter::new(),
+        }
+    }
+}
+
+impl CameraLiveView for UnifiedLiveViewAdapter {
+    fn start_liveview(&self, camera_id: &str, frame_buffer: FrameBuffer) {
+        self.stop_liveview();
+        if camera_id.starts_with("canon") {
+            self.canon.start_liveview(camera_id, frame_buffer);
+        } else {
+            self.windows.start_liveview(camera_id, frame_buffer);
+        }
+    }
+
+    fn stop_liveview(&self) {
+        self.canon.stop_liveview();
+        self.windows.stop_liveview();
+    }
+
+    fn is_streaming(&self) -> bool {
+        self.canon.is_streaming() || self.windows.is_streaming()
     }
 }
 

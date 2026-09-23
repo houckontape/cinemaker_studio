@@ -6,5 +6,6 @@ members = [
     "core/ports/camera_ports",
     "core/usecases/camera_usecases",
     "adapters/camera_adapter_windows",
+    "adapters/camera_adapter_canon",
 ]
 resolver = "3"
