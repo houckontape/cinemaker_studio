@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="EMPTY_MODULE" version="4">
+  <component name="NewModuleRootManager">
+    <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/core/core/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/core/domain/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/core/ports/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/core/usecases/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/adapters/camera_adapter_windows/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/core/domain/camera_domain/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/core/ports/camera_ports/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/core/usecases/camera_usecases/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/adapters/camera_adapter_gphoto2/src" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/target" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>

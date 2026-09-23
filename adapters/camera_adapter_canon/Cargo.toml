@@ -1,0 +1,20 @@
+[package]
+name = "camera_adapter_canon"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "camera_adapter_canon"
+crate-type = ["rlib"]
+
+[dependencies]
+thiserror = "2.0.20"
+log = "0.4"
+
+[build-dependencies]
+bindgen = "0.73.2"
+
+[features]
+default = ["windows"]
+windows = []
+macos = []

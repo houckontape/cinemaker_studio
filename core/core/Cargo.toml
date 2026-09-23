@@ -1,0 +1,9 @@
+[package]
+name = "core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+camera_domain = { path = "../domain/camera_domain" }
+camera_ports = { path = "../ports/camera_ports" }
+camera_usecases = { path = "../usecases/camera_usecases" }

@@ -1,0 +1,17 @@
+[package]
+name = "ui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+core = { path = "../core/core" }
+camera_domain = { path = "../core/domain/camera_domain" }
+camera_ports = { path = "../core/ports/camera_ports" }
+camera_usecases = { path = "../core/usecases/camera_usecases" }
+camera_adapter_windows = { path = "../adapters/camera_adapter_windows" }
+eframe = "0.36.1"
+egui = "0.36.1"
+windows = { version = "0.62.2", features = [
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+] }

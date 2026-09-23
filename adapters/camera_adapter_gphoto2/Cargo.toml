@@ -1,0 +1,9 @@
+[package]
+name = "camera_adapter_gphoto2"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gphoto2 = "3.0"
+camera_domain = { path = "../../core/domain/camera_domain" }
+camera_ports = { path = "../../core/ports/camera_ports" }

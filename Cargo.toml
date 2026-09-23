@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "ui",
+    "core/core",
+    "core/domain/camera_domain",
+    "core/ports/camera_ports",
+    "core/usecases/camera_usecases",
+    "adapters/camera_adapter_windows",
+]
+resolver = "3"

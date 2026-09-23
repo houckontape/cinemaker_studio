@@ -1,0 +1,49 @@
+use camera_domain::FrameBuffer;
+
+pub trait CameraLiveView: Send + Sync {
+    fn start_liveview(&self, camera_id: &str, buffer: FrameBuffer);
+    fn stop_liveview(&self);
+    fn is_streaming(&self) -> bool;
+}
+
+impl<T: CameraLiveView + ?Sized> CameraLiveView for &T {
+    fn start_liveview(&self, camera_id: &str, buffer: FrameBuffer) {
+        (**self).start_liveview(camera_id, buffer);
+    }
+
+    fn stop_liveview(&self) {
+        (**self).stop_liveview();
+    }
+
+    fn is_streaming(&self) -> bool {
+        (**self).is_streaming()
+    }
+}
+
+impl<T: CameraLiveView + ?Sized> CameraLiveView for Box<T> {
+    fn start_liveview(&self, camera_id: &str, buffer: FrameBuffer) {
+        (**self).start_liveview(camera_id, buffer);
+    }
+
+    fn stop_liveview(&self) {
+        (**self).stop_liveview();
+    }
+
+    fn is_streaming(&self) -> bool {
+        (**self).is_streaming()
+    }
+}
+
+impl<T: CameraLiveView + ?Sized> CameraLiveView for std::sync::Arc<T> {
+    fn start_liveview(&self, camera_id: &str, buffer: FrameBuffer) {
+        (**self).start_liveview(camera_id, buffer);
+    }
+
+    fn stop_liveview(&self) {
+        (**self).stop_liveview();
+    }
+
+    fn is_streaming(&self) -> bool {
+        (**self).is_streaming()
+    }
+}
