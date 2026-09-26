@@ -1,11 +1,11 @@
 use camera_domain::CameraSettings;
 use crate::edsdk_sys::*;
 
-/// Reads and decodes camera settings from an active Canon camera reference.
+/// Lit et décode les réglages de la caméra Canon active.
 ///
 /// # Safety
 ///
-/// `cam_ref` must be a valid, opened `EdsCameraRef` handle or null.
+/// `cam_ref` doit être un pointeur `EdsCameraRef` valide et ouvert.
 pub unsafe fn read_camera_settings(cam_ref: EdsCameraRef) -> CameraSettings {
     if cam_ref.is_null() {
         return CameraSettings::default();
@@ -17,7 +17,13 @@ pub unsafe fn read_camera_settings(cam_ref: EdsCameraRef) -> CameraSettings {
     let exp_val = unsafe { get_uint32_prop(cam_ref, kEdsPropID_ExposureCompensation) };
     let wb_val = unsafe { get_uint32_prop(cam_ref, kEdsPropID_WhiteBalance) };
     let battery_val = unsafe { get_uint32_prop(cam_ref, kEdsPropID_BatteryLevel) };
-    let ae_val = unsafe { get_uint32_prop(cam_ref, kEdsPropID_AEMode) };
+    let battery_qual = unsafe { get_uint32_prop(cam_ref, kEdsPropID_BatteryQuality) };
+    let mut ae_val = unsafe { get_uint32_prop(cam_ref, kEdsPropID_AEMode) };
+    if (ae_val.is_none() || ae_val == Some(0))
+        && let Some(ae_sel) = unsafe { get_uint32_prop(cam_ref, kEdsPropID_AEModeSelect) }
+    {
+        ae_val = Some(ae_sel);
+    }
 
     CameraSettings {
         iso: decode_iso(iso_val),
@@ -25,13 +31,42 @@ pub unsafe fn read_camera_settings(cam_ref: EdsCameraRef) -> CameraSettings {
         shutter_speed: decode_tv(tv_val),
         exposure_comp: decode_exp_comp(exp_val),
         white_balance: decode_white_balance(wb_val),
-        battery_level: decode_battery(battery_val),
+        battery_level: decode_battery(battery_val, battery_qual),
         shooting_mode: decode_ae_mode(ae_val),
     }
 }
 
 unsafe fn get_uint32_prop(cam_ref: EdsCameraRef, prop_id: EdsPropertyID) -> Option<u32> {
     let mut data: EdsUInt32 = 0;
+    let mut prop_type: EdsUInt32 = 0;
+    let mut prop_size: EdsUInt32 = 0;
+
+    let size_err = unsafe {
+        EdsGetPropertySize(
+            cam_ref,
+            prop_id,
+            0,
+            &mut prop_type as *mut _ as *mut _,
+            &mut prop_size as *mut _ as *mut _,
+        )
+    };
+
+    if size_err == EDS_ERR_OK && prop_size > 0 {
+        let err = unsafe {
+            EdsGetPropertyData(
+                cam_ref,
+                prop_id,
+                0,
+                prop_size.min(std::mem::size_of::<EdsUInt32>() as EdsUInt32),
+                &mut data as *mut _ as *mut _,
+            )
+        };
+        if err == EDS_ERR_OK {
+            return Some(data);
+        }
+    }
+
+    // Requête directe de secours
     let err = unsafe {
         EdsGetPropertyData(
             cam_ref,
@@ -51,7 +86,7 @@ unsafe fn get_uint32_prop(cam_ref: EdsCameraRef, prop_id: EdsPropertyID) -> Opti
 pub fn decode_iso(val: Option<u32>) -> String {
     let Some(v) = val else { return "Auto".to_string() };
     match v {
-        0x00 => "Auto".to_string(),
+        0x00 | 0xffffffff => "Auto".to_string(),
         0x28 => "ISO 6".to_string(),
         0x30 => "ISO 12".to_string(),
         0x38 => "ISO 25".to_string(),
@@ -81,7 +116,7 @@ pub fn decode_iso(val: Option<u32>) -> String {
         0x88 => "ISO 25600".to_string(),
         0x90 => "ISO 51200".to_string(),
         0x98 => "ISO 102400".to_string(),
-        0xffffffff => "N/A".to_string(),
+        dec if (50..=204800).contains(&dec) => format!("ISO {}", dec),
         other => format!("ISO {:#x}", other),
     }
 }
@@ -89,6 +124,7 @@ pub fn decode_iso(val: Option<u32>) -> String {
 pub fn decode_av(val: Option<u32>) -> String {
     let Some(v) = val else { return "f/--".to_string() };
     match v {
+        0x00 | 0xffffffff => "f/--".to_string(),
         0x08 => "f/1.0".to_string(),
         0x0B => "f/1.1".to_string(),
         0x0C | 0x0D => "f/1.2".to_string(),
@@ -124,7 +160,6 @@ pub fn decode_av(val: Option<u32>) -> String {
         0x5D => "f/40".to_string(),
         0x60 => "f/45".to_string(),
         0x68 => "f/64".to_string(),
-        0xffffffff => "f/--".to_string(),
         other => format!("f/{:#x}", other),
     }
 }
@@ -132,6 +167,7 @@ pub fn decode_av(val: Option<u32>) -> String {
 pub fn decode_tv(val: Option<u32>) -> String {
     let Some(v) = val else { return "--s".to_string() };
     match v {
+        0x00 | 0xffffffff => "--s".to_string(),
         0x04 | 0x0C => "Bulb".to_string(),
         0x10 => "30\"".to_string(),
         0x13 => "25\"".to_string(),
@@ -198,7 +234,6 @@ pub fn decode_tv(val: Option<u32>) -> String {
         0x9D => "1/6400s".to_string(),
         0xA0 => "1/8000s".to_string(),
         0xA8 => "1/16000s".to_string(),
-        0xffffffff => "--s".to_string(),
         other => format!("{:#x}s", other),
     }
 }
@@ -259,18 +294,38 @@ pub fn decode_white_balance(val: Option<u32>) -> String {
     }
 }
 
-pub fn decode_battery(val: Option<u32>) -> String {
-    let Some(v) = val else { return "100%".to_string() };
-    match v {
-        0xffffffff => "Secteur (AC)".to_string(),
-        0 => "Batterie vide".to_string(),
-        1 => "Faible (25%)".to_string(),
-        2 => "Moyenne (50%)".to_string(),
-        3 => "Bonne (75%)".to_string(),
-        4 => "Pleine (100%)".to_string(),
-        pct if pct <= 100 => format!("{}%", pct),
-        _ => "OK".to_string(),
+pub fn decode_battery(level: Option<u32>, quality: Option<u32>) -> String {
+    if let Some(q) = quality
+        && q == 0xffffffff
+    {
+        return "Secteur (AC)".to_string();
     }
+    if let Some(v) = level {
+        if v == 0xffffffff {
+            return "Secteur (AC)".to_string();
+        }
+        if v > 4 && v <= 100 {
+            return format!("{}%", v);
+        }
+        match v {
+            4 => return "Pleine (100%)".to_string(),
+            3 => return "Bonne (75%)".to_string(),
+            2 => return "Moyenne (50%)".to_string(),
+            1 => return "Faible (25%)".to_string(),
+            _ => {}
+        }
+    }
+    if let Some(q) = quality {
+        match q {
+            4..=6 => return "Pleine (100%)".to_string(),
+            3 => return "Bonne (75%)".to_string(),
+            2 => return "Moyenne (50%)".to_string(),
+            1 => return "Faible (25%)".to_string(),
+            pct if (5..=100).contains(&pct) => return format!("{}%", pct),
+            _ => {}
+        }
+    }
+    "100%".to_string()
 }
 
 pub fn decode_ae_mode(val: Option<u32>) -> String {

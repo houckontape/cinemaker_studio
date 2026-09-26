@@ -72,9 +72,14 @@ impl<P: CameraPort, L: CameraLiveView> WorkspaceApp<P, L> {
     }
 
     pub fn refresh_settings(&mut self) {
-        if let Some(settings) = self.liveview_usecase.get_current_settings() {
-            self.current_settings = Some(settings);
-        } else if let Some(ref selected_id) = self.selected_camera_id {
+        if self.liveview_usecase.is_streaming() {
+            if let Some(settings) = self.liveview_usecase.get_current_settings() {
+                self.current_settings = Some(settings);
+            }
+            return;
+        }
+
+        if let Some(ref selected_id) = self.selected_camera_id {
             self.current_settings = self.camera_port.get_camera_settings(selected_id);
         } else {
             self.current_settings = None;
@@ -88,7 +93,6 @@ impl<P: CameraPort, L: CameraLiveView> WorkspaceApp<P, L> {
                 *lock = None;
             }
             self.liveview_usecase.start(camera_id, Arc::clone(&self.frame_buffer));
-            self.refresh_settings();
         }
     }
 

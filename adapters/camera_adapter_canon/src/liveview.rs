@@ -7,7 +7,7 @@ use log::{error, info, warn};
 use camera_domain::{CameraSettings, Frame, FrameBuffer};
 use camera_ports::{CameraLiveView, CameraStream};
 
-use crate::canon_adapter::CanonSdk;
+use crate::canon_adapter::{CanonSdk, LIVEVIEW_ACTIVE};
 use crate::edsdk_sys::*;
 use crate::property_decoder::read_camera_settings;
 
@@ -48,6 +48,17 @@ impl CanonLiveViewAdapter {
         }
     }
 
+    /// Boucle principale de capture du flux LiveView (exécutée dans un thread dédié).
+    ///
+    /// Cette méthode réalise :
+    /// 1. L'initialisation du runtime COM Windows (STA requis par l'EDSDK Canon).
+    /// 2. L'accès à la caméra sélectionnée via `EdsGetChildAtIndex`.
+    /// 3. L'ouverture de la session avec gestion de retries en cas de bus USB occupé.
+    /// 4. L'initialisation du mode EVF (`kEdsPropID_Evf_Mode`) et l'activation de la sortie PC (`kEdsPropID_Evf_OutputDevice`).
+    /// 5. La boucle de capture continue : création du flux mémoire, téléchargement de l'image EVF (`EdsDownloadEvfImage`),
+    ///    décompression JPEG en mémoire vers RGBA et transmission au buffer partagé de l'application UI.
+    /// 6. Le rafraîchissement périodique des paramètres matériels (ISO, vitesse, ouverture, batterie).
+    /// 7. La fermeture propre de la session et la désactivation de la sortie LiveView lors de l'arrêt.
     fn run_liveview_loop(
         camera_index: usize,
         is_running: Arc<AtomicBool>,
@@ -99,9 +110,20 @@ impl CanonLiveViewAdapter {
             return;
         }
 
-        let err = unsafe { EdsOpenSession(cam_ref) };
-        if err != EDS_ERR_OK && err != EDS_ERR_SESSION_ALREADY_OPEN {
-            error!("Erreur EdsOpenSession: {:#x}", err);
+        // Ouverture de la session avec boucle de retry en cas de bus occupé
+        let mut open_err = unsafe { EdsOpenSession(cam_ref) };
+        let mut retries = 0;
+        while (open_err == EDS_ERR_DEVICE_BUSY || open_err == EDS_ERR_COMM_PORT_IS_IN_USE) && retries < 15 {
+            thread::sleep(Duration::from_millis(50));
+            unsafe {
+                let _ = EdsGetEvent();
+                open_err = EdsOpenSession(cam_ref);
+            }
+            retries += 1;
+        }
+
+        if open_err != EDS_ERR_OK && open_err != EDS_ERR_SESSION_ALREADY_OPEN {
+            error!("Erreur EdsOpenSession: {:#x}", open_err);
             unsafe {
                 EdsRelease(cam_ref);
                 EdsRelease(camera_list);
@@ -115,14 +137,24 @@ impl CanonLiveViewAdapter {
             return;
         }
 
-        // Process pending events
-        unsafe {
-            let _ = EdsGetEvent();
+        // Pompage initial des événements pour recevoir la configuration complète de l'appareil
+        for _ in 0..8 {
+            unsafe {
+                let _ = EdsGetEvent();
+            }
+            thread::sleep(Duration::from_millis(25));
         }
 
-        // Enable EVF mode
-        let evf_mode: EdsUInt32 = kEdsEvfMode_Enable;
-        let _ = unsafe {
+        // Lecture des réglages initiaux
+        let initial_settings = unsafe { read_camera_settings(cam_ref) };
+        if let Ok(mut lock) = settings_store.lock() {
+            *lock = initial_settings;
+        }
+
+        // Configuration du mode LiveView (Evf_Mode = 1) : obligatoire sur de nombreux boîtiers Canon EOS
+        // pour autoriser le basculement du capteur et l'activation du miroir en mode vidéo/LiveView
+        let evf_mode: EdsUInt32 = 1;
+        let set_mode_err = unsafe {
             EdsSetPropertyData(
                 cam_ref,
                 kEdsPropID_Evf_Mode,
@@ -131,8 +163,11 @@ impl CanonLiveViewAdapter {
                 &evf_mode as *const _ as *const _,
             )
         };
+        if set_mode_err != EDS_ERR_OK {
+            warn!("Avertissement EdsSetPropertyData(kEdsPropID_Evf_Mode): {:#x}", set_mode_err);
+        }
 
-        // Configure EVF Zoom to 1x (Fit) for lightweight liveview stream
+        // Configuration du zoom EVF en mode Fit (1x : image complète non recadrée)
         let evf_zoom: EdsUInt32 = kEdsEvfZoom_Fit;
         let _ = unsafe {
             EdsSetPropertyData(
@@ -144,74 +179,95 @@ impl CanonLiveViewAdapter {
             )
         };
 
-        // Set output device to PC (and keep TFT active if supported)
-        let mut device: EdsUInt32 = 0;
-        let _ = unsafe {
-            EdsGetPropertyData(
-                cam_ref,
-                kEdsPropID_Evf_OutputDevice,
-                0,
-                std::mem::size_of::<EdsUInt32>() as EdsUInt32,
-                &mut device as *mut _ as *mut _,
-            )
-        };
-
-        device |= kEdsEvfOutputDevice_PC;
-        let set_dev_err = unsafe {
-            EdsSetPropertyData(
-                cam_ref,
-                kEdsPropID_Evf_OutputDevice,
-                0,
-                std::mem::size_of::<EdsUInt32>() as EdsUInt32,
-                &device as *const _ as *const _,
-            )
-        };
-
-        // Fallback: If combined device flags failed, try pure PC output
-        if set_dev_err != EDS_ERR_OK {
-            let pc_only: EdsUInt32 = kEdsEvfOutputDevice_PC;
+        // Activation de la sortie LiveView vers le PC (kEdsEvfOutputDevice_PC)
+        // Note : sur les appareils récents, la combinaison (TFT | PC) ou PC seul bascule le flux EVF.
+        let mut retry_count = 0;
+        loop {
+            let mut device: EdsUInt32 = 0;
             let _ = unsafe {
+                EdsGetPropertyData(
+                    cam_ref,
+                    kEdsPropID_Evf_OutputDevice,
+                    0,
+                    std::mem::size_of::<EdsUInt32>() as EdsUInt32,
+                    &mut device as *mut _ as *mut _,
+                )
+            };
+
+            device |= kEdsEvfOutputDevice_PC;
+            let set_dev_err = unsafe {
                 EdsSetPropertyData(
                     cam_ref,
                     kEdsPropID_Evf_OutputDevice,
                     0,
                     std::mem::size_of::<EdsUInt32>() as EdsUInt32,
-                    &pc_only as *const _ as *const _,
+                    &device as *const _ as *const _,
                 )
             };
+
+            if set_dev_err == EDS_ERR_OK || retry_count >= 10 {
+                if set_dev_err != EDS_ERR_OK {
+                    let pc_only: EdsUInt32 = kEdsEvfOutputDevice_PC;
+                    let _ = unsafe {
+                        EdsSetPropertyData(
+                            cam_ref,
+                            kEdsPropID_Evf_OutputDevice,
+                            0,
+                            std::mem::size_of::<EdsUInt32>() as EdsUInt32,
+                            &pc_only as *const _ as *const _,
+                        )
+                    };
+                }
+                break;
+            }
+
+            unsafe {
+                let _ = EdsGetEvent();
+            }
+            thread::sleep(Duration::from_millis(50));
+            retry_count += 1;
         }
 
-        // Process events and read initial default camera settings
+        // Attente et pompage pour la stabilisation du miroir et du capteur en mode LiveView
         for _ in 0..5 {
             unsafe {
                 let _ = EdsGetEvent();
             }
-            thread::sleep(Duration::from_millis(20));
+            thread::sleep(Duration::from_millis(30));
         }
-
-        let initial_settings = unsafe { read_camera_settings(cam_ref) };
-        if let Ok(mut lock) = settings_store.lock() {
-            *lock = initial_settings;
-        }
-
-        // Allow sensor/mirror to settle for liveview
-        thread::sleep(Duration::from_millis(100));
 
         info!("Canon LiveView démarré avec succès pour l'index {}", camera_index);
+        LIVEVIEW_ACTIVE.store(true, Ordering::SeqCst);
+
+        // Maintien de l'appareil éveillé (évite le mode veille ou coupure d'inactivité)
+        unsafe {
+            let _ = EdsSendCommand(cam_ref, kEdsCameraCommand_ExtendShutDownTimer, 0);
+        }
 
         let mut frame_count: u64 = 0;
 
         while is_running.load(Ordering::SeqCst) {
+            // Traitement des messages et événements EDSDK requis pour le maintien du flux USB
             unsafe {
                 let _ = EdsGetEvent();
             }
 
+            // Réinitialisation périodique du timer de veille (toutes les ~60 trames / ~1-2s)
+            if frame_count.is_multiple_of(60) {
+                unsafe {
+                    let _ = EdsSendCommand(cam_ref, kEdsCameraCommand_ExtendShutDownTimer, 0);
+                }
+            }
+
+            // Étape 1 : Création d'un flux mémoire temporaire pour recevoir la trame compressée JPEG
             let mut stream_ref: EdsStreamRef = std::ptr::null_mut();
             let err = unsafe { EdsCreateMemoryStream(0, &mut stream_ref) };
             if err == EDS_ERR_OK && !stream_ref.is_null() {
+                // Étape 2 : Création de la référence d'image EVF associée au flux
                 let mut evf_image_ref: EdsEvfImageRef = std::ptr::null_mut();
                 let err = unsafe { EdsCreateEvfImageRef(stream_ref, &mut evf_image_ref) };
                 if err == EDS_ERR_OK && !evf_image_ref.is_null() {
+                    // Étape 3 : Téléchargement de l'image LiveView actuelle depuis la caméra Canon
                     let dl_err = unsafe { EdsDownloadEvfImage(cam_ref, evf_image_ref) };
                     if dl_err == EDS_ERR_OK {
                         let mut ptr: *mut std::os::raw::c_void = std::ptr::null_mut();
@@ -220,6 +276,7 @@ impl CanonLiveViewAdapter {
                         let ptr_err = unsafe { EdsGetPointer(stream_ref, &mut ptr) };
                         let len_err = unsafe { EdsGetLength(stream_ref, &mut len) };
 
+                        // Étape 4 : Extraction du buffer JPEG brut et conversion en image RGBA
                         if ptr_err == EDS_ERR_OK && len_err == EDS_ERR_OK && !ptr.is_null() && len > 0 {
                             let jpeg_data = unsafe {
                                 std::slice::from_raw_parts(ptr as *const u8, len as usize)
@@ -231,6 +288,7 @@ impl CanonLiveViewAdapter {
                                 let height = rgba.height();
                                 let raw = rgba.into_raw();
 
+                                // Étape 5 : Publication de la trame décodée dans le FrameBuffer de l'UI
                                 if let Some(ref fb) = frame_buffer
                                     && let Ok(mut lock) = fb.lock()
                                 {
@@ -250,7 +308,7 @@ impl CanonLiveViewAdapter {
                                 }
 
                                 frame_count += 1;
-                                // Periodic settings refresh every ~30 frames (~1s)
+                                // Étape 6 : Rafraîchissement périodique des réglages (toutes les ~30 images / ~1s)
                                 if frame_count.is_multiple_of(30) {
                                     let current_settings = unsafe { read_camera_settings(cam_ref) };
                                     if let Ok(mut lock) = settings_store.lock() {
@@ -260,22 +318,26 @@ impl CanonLiveViewAdapter {
                             }
                         }
                     } else if dl_err == EDS_ERR_OBJECT_NOTREADY || dl_err == EDS_ERR_DEVICE_BUSY {
+                        // Capteur ou mémoire temporairement non prêts, pause courte avant nouvelle tentative
                         thread::sleep(Duration::from_millis(20));
                     } else {
                         warn!("EdsDownloadEvfImage code: {:#x}", dl_err);
                         thread::sleep(Duration::from_millis(30));
                     }
 
+                    // Libération de la structure d'image EVF
                     unsafe { EdsRelease(evf_image_ref) };
                 }
 
+                // Libération du flux mémoire
                 unsafe { EdsRelease(stream_ref) };
             }
 
+            // Fréquence cible d'environ ~60 FPS maximum pour le LiveView
             thread::sleep(Duration::from_millis(16));
         }
 
-        // Disable EVF PC output
+        // Étape 7 : Désactivation de la sortie PC à la fin du flux
         let mut device: EdsUInt32 = 0;
         let _ = unsafe {
             EdsGetPropertyData(
@@ -297,11 +359,14 @@ impl CanonLiveViewAdapter {
             )
         };
 
+        // Étape 8 : Fermeture de session et libération de tous les handles SDK
         unsafe {
             EdsCloseSession(cam_ref);
             EdsRelease(cam_ref);
             EdsRelease(camera_list);
         }
+
+        LIVEVIEW_ACTIVE.store(false, Ordering::SeqCst);
 
         #[cfg(target_os = "windows")]
         unsafe {

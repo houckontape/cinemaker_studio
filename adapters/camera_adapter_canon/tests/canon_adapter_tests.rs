@@ -57,8 +57,9 @@ fn test_canon_property_decoding() {
     assert_eq!(decode_white_balance(Some(1)), "Lumière du jour");
     assert_eq!(decode_white_balance(Some(3)), "Tungstène");
 
-    assert_eq!(decode_battery(Some(100)), "100%");
-    assert_eq!(decode_battery(Some(0xffffffff)), "Secteur (AC)");
+    assert_eq!(decode_battery(Some(100), None), "100%");
+    assert_eq!(decode_battery(Some(0xffffffff), None), "Secteur (AC)");
+    assert_eq!(decode_battery(None, Some(4)), "Pleine (100%)");
 
     assert_eq!(decode_ae_mode(Some(0)), "Programme (P)");
     assert_eq!(decode_ae_mode(Some(1)), "Priorité Vitesse (Tv)");

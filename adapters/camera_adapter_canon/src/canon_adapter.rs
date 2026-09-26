@@ -1,5 +1,8 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::os::raw::c_char;
+use std::thread;
+use std::time::Duration;
 use log::warn;
 
 use camera_domain::{Camera, CameraInfo, CameraKind, CameraSettings};
@@ -8,6 +11,8 @@ use camera_ports::{CameraDetector, CameraPort};
 use crate::edsdk_sys::*;
 use crate::error::{CanonError, CanonResult};
 use crate::property_decoder::read_camera_settings;
+
+pub static LIVEVIEW_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 pub struct CanonSdk;
 
@@ -27,11 +32,7 @@ impl CanonSdk {
         }
 
         let err = unsafe { EdsInitializeSDK() };
-        if err == EDS_ERR_OK {
-            *initialized = true;
-            Ok(())
-        } else if err == 2 {
-            // Already initialized in process
+        if err == EDS_ERR_OK || err == 2 {
             *initialized = true;
             Ok(())
         } else {
@@ -106,7 +107,7 @@ impl CanonCameraAdapter {
                 String::new()
             };
 
-            // If name is empty, attempt to read ProductName property
+            // Si le nom est vide, tentative de lecture via kEdsPropID_ProductName
             if name.is_empty() {
                 let mut name_buf = [0 as c_char; 256];
                 let prop_err = unsafe {
@@ -158,18 +159,38 @@ impl CanonCameraAdapter {
             return Err(CanonError::CameraNotFound);
         }
 
-        let open_err = unsafe { EdsOpenSession(cam_ref) };
-        let settings = if open_err == EDS_ERR_OK {
+        // Tentative d'ouverture de session avec gestion de retry si busy
+        let mut open_err = unsafe { EdsOpenSession(cam_ref) };
+        let mut retries = 0;
+        while (open_err == EDS_ERR_DEVICE_BUSY || open_err == EDS_ERR_COMM_PORT_IS_IN_USE) && retries < 5 {
+            thread::sleep(Duration::from_millis(50));
             unsafe {
                 let _ = EdsGetEvent();
+                open_err = EdsOpenSession(cam_ref);
+            }
+            retries += 1;
+        }
+
+        let is_liveview = LIVEVIEW_ACTIVE.load(Ordering::SeqCst);
+
+        let settings = if open_err == EDS_ERR_OK {
+            // Laisser le temps à la caméra de transmettre la table des propriétés via USB
+            for _ in 0..6 {
+                unsafe {
+                    let _ = EdsGetEvent();
+                }
+                thread::sleep(Duration::from_millis(25));
             }
             let s = unsafe { read_camera_settings(cam_ref) };
-            unsafe { EdsCloseSession(cam_ref) };
+            if !is_liveview {
+                unsafe { EdsCloseSession(cam_ref) };
+            }
             s
         } else if open_err == EDS_ERR_SESSION_ALREADY_OPEN {
             unsafe {
                 let _ = EdsGetEvent();
             }
+            // Ne pas fermer la session car elle est utilisée par le flux LiveView
             unsafe { read_camera_settings(cam_ref) }
         } else {
             warn!("EdsOpenSession failed in query_settings_for_camera: {:#x}", open_err);
