@@ -49,9 +49,12 @@ pub const kEdsPropID_Unknown: EdsPropertyID = 0x0000ffff;
 pub const kEdsPropID_ProductName: EdsPropertyID = 0x00000002;
 pub const kEdsPropID_BodyIDEx: EdsPropertyID = 0x00000015;
 pub const kEdsPropID_BatteryLevel: EdsPropertyID = 0x00000004;
+pub const kEdsPropID_BatteryQuality: EdsPropertyID = 0x00000010;
 pub const kEdsPropID_SaveTo: EdsPropertyID = 0x0000000b;
 pub const kEdsPropID_CurrentStorage: EdsPropertyID = 0x0000000c;
 pub const kEdsPropID_CurrentFolder: EdsPropertyID = 0x0000000d;
+pub const kEdsPropID_AEMode: EdsPropertyID = 0x00000100;
+pub const kEdsPropID_AEModeSelect: EdsPropertyID = 0x00000138;
 pub const kEdsPropID_DriveMode: EdsPropertyID = 0x00000102;
 pub const kEdsPropID_ISOSpeed: EdsPropertyID = 0x00000103;
 pub const kEdsPropID_MeteringMode: EdsPropertyID = 0x00000104;
@@ -59,11 +62,23 @@ pub const kEdsPropID_AFMode: EdsPropertyID = 0x00000105;
 pub const kEdsPropID_Av: EdsPropertyID = 0x00000106;
 pub const kEdsPropID_Tv: EdsPropertyID = 0x00000107;
 pub const kEdsPropID_ExposureCompensation: EdsPropertyID = 0x00000108;
+pub const kEdsPropID_WhiteBalance: EdsPropertyID = 0x00000109;
+pub const kEdsPropID_ColorTemperature: EdsPropertyID = 0x0000010a;
+pub const kEdsPropID_ImageQuality: EdsPropertyID = 0x00000101;
 pub const kEdsPropID_Evf_OutputDevice: EdsPropertyID = 0x00000500;
 pub const kEdsPropID_Evf_Mode: EdsPropertyID = 0x00000501;
 pub const kEdsPropID_Evf_CoordinateSystem: EdsPropertyID = 0x00000540;
+pub const kEdsPropID_Evf_Zoom: EdsPropertyID = 0x00000541;
+pub const kEdsPropID_Evf_ZoomPosition: EdsPropertyID = 0x00000542;
 pub const kEdsPropID_Evf_ZoomRect: EdsPropertyID = 0x00000545;
 pub const kEdsPropID_Evf_ImagePosition: EdsPropertyID = 0x00000547;
+pub const kEdsPropID_Evf_Histogram: EdsPropertyID = 0x0000050a;
+pub const kEdsPropID_Evf_HistogramStatus: EdsPropertyID = 0x0000050b;
+
+// EVF Zoom
+pub const kEdsEvfZoom_Fit: EdsUInt32 = 1;
+pub const kEdsEvfZoom_x5: EdsUInt32 = 5;
+pub const kEdsEvfZoom_x10: EdsUInt32 = 10;
 
 // EVF Output Device Flags
 pub const kEdsEvfOutputDevice_TFT: EdsUInt32 = 1;
@@ -184,4 +199,6 @@ unsafe extern "system" {
         inStreamRef: EdsStreamRef,
         outLength: *mut EdsUInt64,
     ) -> EdsError;
+
+    pub fn EdsGetEvent() -> EdsError;
 }

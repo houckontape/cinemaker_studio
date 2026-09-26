@@ -1,3 +1,4 @@
+use crate::canon_adapter::CanonSdk;
 use crate::edsdk_sys::*;
 use crate::error::{CanonError, CanonResult};
 
@@ -5,12 +6,8 @@ pub struct CaptureController;
 
 impl CaptureController {
     pub fn take_picture(camera_index: usize) -> CanonResult<()> {
+        CanonSdk::init()?;
         unsafe {
-            let err = EdsInitializeSDK();
-            if err != EDS_ERR_OK {
-                return Err(CanonError::SdkInitFailed(err));
-            }
-
             let mut camera_list: EdsCameraListRef = std::ptr::null_mut();
             let err = EdsGetCameraList(&mut camera_list);
             if err != EDS_ERR_OK || camera_list.is_null() {
@@ -24,16 +21,18 @@ impl CaptureController {
                 return Err(CanonError::InvalidCameraIndex(camera_index));
             }
 
-            let err = EdsOpenSession(cam_ref);
-            if err != EDS_ERR_OK && err != EDS_ERR_SESSION_ALREADY_OPEN {
+            let open_err = EdsOpenSession(cam_ref);
+            if open_err != EDS_ERR_OK && open_err != EDS_ERR_SESSION_ALREADY_OPEN {
                 EdsRelease(cam_ref);
                 EdsRelease(camera_list);
-                return Err(CanonError::SessionError(err));
+                return Err(CanonError::SessionError(open_err));
             }
 
             let err = EdsSendCommand(cam_ref, kEdsCameraCommand_TakePicture, 0);
 
-            EdsCloseSession(cam_ref);
+            if open_err == EDS_ERR_OK {
+                EdsCloseSession(cam_ref);
+            }
             EdsRelease(cam_ref);
             EdsRelease(camera_list);
 

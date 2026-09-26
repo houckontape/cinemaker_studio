@@ -1,4 +1,4 @@
-use camera_domain::FrameBuffer;
+use camera_domain::{CameraSettings, FrameBuffer};
 use camera_ports::CameraLiveView;
 
 pub struct LiveViewUseCase<P: CameraLiveView> {
@@ -20,6 +20,10 @@ impl<P: CameraLiveView> LiveViewUseCase<P> {
 
     pub fn is_streaming(&self) -> bool {
         self.liveview_port.is_streaming()
+    }
+
+    pub fn get_current_settings(&self) -> Option<CameraSettings> {
+        self.liveview_port.get_current_settings()
     }
 }
 

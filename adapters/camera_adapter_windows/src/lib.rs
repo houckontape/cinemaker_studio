@@ -181,20 +181,20 @@ mod tests {
             let mut received_frame = false;
             for _ in 0..40 {
                 thread::sleep(Duration::from_millis(100));
-                if let Ok(lock) = buffer.lock() {
-                    if let Some(frame) = lock.as_ref() {
-                        println!(
-                            "Received hardware frame: {}x{}, data bytes: {}",
-                            frame.width,
-                            frame.height,
-                            frame.data.len()
-                        );
-                        assert!(frame.width > 0);
-                        assert!(frame.height > 0);
-                        assert_eq!(frame.data.len(), (frame.width * frame.height * 4) as usize);
-                        received_frame = true;
-                        break;
-                    }
+                if let Ok(lock) = buffer.lock()
+                    && let Some(frame) = lock.as_ref()
+                {
+                    println!(
+                        "Received hardware frame: {}x{}, data bytes: {}",
+                        frame.width,
+                        frame.height,
+                        frame.data.len()
+                    );
+                    assert!(frame.width > 0);
+                    assert!(frame.height > 0);
+                    assert_eq!(frame.data.len(), (frame.width * frame.height * 4) as usize);
+                    received_frame = true;
+                    break;
                 }
             }
 

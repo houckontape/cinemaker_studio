@@ -1,6 +1,6 @@
 use camera_adapter_canon::{CanonCameraAdapter, CanonLiveViewAdapter};
 use camera_adapter_windows::MediaFoundationLiveViewAdapter;
-use camera_domain::{Camera, CameraKind, FrameBuffer};
+use camera_domain::{Camera, CameraKind, CameraSettings, FrameBuffer};
 use camera_ports::{CameraLiveView, CameraPort};
 use windows::core::PWSTR;
 use windows::Win32::Media::MediaFoundation::*;
@@ -128,6 +128,15 @@ impl CameraPort for CameraAdapter {
 
         cameras
     }
+
+    fn get_camera_settings(&self, camera_id: &str) -> Option<CameraSettings> {
+        if camera_id.starts_with("canon") {
+            let canon_adapter = CanonCameraAdapter::new();
+            canon_adapter.get_camera_settings(camera_id)
+        } else {
+            None
+        }
+    }
 }
 
 pub struct UnifiedLiveViewAdapter {
@@ -168,6 +177,10 @@ impl CameraLiveView for UnifiedLiveViewAdapter {
     fn is_streaming(&self) -> bool {
         self.canon.is_streaming() || self.windows.is_streaming()
     }
+
+    fn get_current_settings(&self) -> Option<CameraSettings> {
+        self.canon.get_current_settings()
+    }
 }
 
 #[cfg(test)]
@@ -179,5 +192,67 @@ mod tests {
         let adapter = CameraAdapter::new();
         let cameras = adapter.list_cameras();
         println!("Detected cameras: {:#?}", cameras);
+    }
+
+    #[test]
+    fn test_workspace_selection_and_liveview_control() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        use camera_domain::CameraKind;
+
+        struct MockCameraPort {
+            cams: Vec<Camera>,
+        }
+        impl CameraPort for MockCameraPort {
+            fn list_cameras(&self) -> Vec<Camera> {
+                self.cams.clone()
+            }
+        }
+
+        struct MockLiveView {
+            streaming: Arc<AtomicBool>,
+        }
+        impl CameraLiveView for MockLiveView {
+            fn start_liveview(&self, _camera_id: &str, _frame_buffer: FrameBuffer) {
+                self.streaming.store(true, Ordering::SeqCst);
+            }
+            fn stop_liveview(&self) {
+                self.streaming.store(false, Ordering::SeqCst);
+            }
+            fn is_streaming(&self) -> bool {
+                self.streaming.load(Ordering::SeqCst)
+            }
+        }
+
+        let streaming_flag = Arc::new(AtomicBool::new(false));
+        let mock_lv = MockLiveView {
+            streaming: Arc::clone(&streaming_flag),
+        };
+        let mock_port = MockCameraPort {
+            cams: vec![
+                Camera::new("canon_0", "Canon EOS R5", CameraKind::Usb),
+                Camera::new("0", "Integrated Webcam", CameraKind::Internal),
+            ],
+        };
+
+        let mut app = crate::workspace_app::WorkspaceApp::new_with_ports(mock_port, mock_lv);
+
+        assert_eq!(app.available_cameras().len(), 2);
+        assert_eq!(app.selected_camera_id(), Some("canon_0"));
+        assert!(!app.is_streaming());
+
+        // Test start liveview
+        app.start_liveview();
+        assert!(app.is_streaming());
+
+        // Test toggle liveview
+        app.toggle_liveview();
+        assert!(!app.is_streaming());
+
+        // Test change selection
+        app.start_liveview();
+        assert!(app.is_streaming());
+        app.refresh_camera();
+        assert_eq!(app.selected_camera_id(), Some("canon_0"));
     }
 }
