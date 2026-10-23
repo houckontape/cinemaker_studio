@@ -23,6 +23,7 @@ impl<'a> CameraPanel<'a> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn show(
         ui: &mut Ui,
         cameras: &[Camera],
@@ -31,6 +32,7 @@ impl<'a> CameraPanel<'a> {
         is_streaming: bool,
         mut on_refresh: impl FnMut(),
         mut on_toggle_liveview: impl FnMut(),
+        mut on_capture: impl FnMut(),
     ) {
         ui.horizontal(|ui| {
             ui.label(RichText::new("Caméra :").strong());
@@ -78,6 +80,17 @@ impl<'a> CameraPanel<'a> {
             if ui.add_enabled(can_start_liveview, egui::Button::new(liveview_btn_text)).clicked() {
                 on_toggle_liveview();
             }
+
+            let capture_btn = egui::Button::new(
+                RichText::new("📸 Prendre une photo")
+                    .color(Color32::from_rgb(255, 255, 255))
+                    .strong(),
+            )
+            .fill(Color32::from_rgb(40, 110, 200));
+
+            if ui.add_enabled(is_streaming, capture_btn).clicked() {
+                on_capture();
+            }
         });
 
         if let Some(s) = settings
@@ -118,7 +131,13 @@ impl<'a> CameraPanel<'a> {
         }
     }
 
-    pub fn ui(self, ui: &mut Ui, on_refresh: impl FnMut(), on_toggle_liveview: impl FnMut()) {
+    pub fn ui(
+        self,
+        ui: &mut Ui,
+        on_refresh: impl FnMut(),
+        on_toggle_liveview: impl FnMut(),
+        on_capture: impl FnMut(),
+    ) {
         Self::show(
             ui,
             self.cameras,
@@ -127,6 +146,7 @@ impl<'a> CameraPanel<'a> {
             self.is_streaming,
             on_refresh,
             on_toggle_liveview,
+            on_capture,
         );
     }
 }

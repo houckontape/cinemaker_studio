@@ -74,11 +74,15 @@ impl LiveViewPanel {
                             let available_size = ui.available_size();
                             let aspect_ratio = frame.width as f32 / frame.height as f32;
 
+                            // Déduire l'espace nécessaire pour la barre d'état en dessous du flux
+                            let status_bar_height = 28.0;
+                            let max_height = (available_size.y - status_bar_height).max(0.0);
+
                             let mut display_width = available_size.x;
                             let mut display_height = display_width / aspect_ratio;
 
-                            if display_height > available_size.y && available_size.y > 0.0 {
-                                display_height = available_size.y;
+                            if display_height > max_height && max_height > 0.0 {
+                                display_height = max_height;
                                 display_width = display_height * aspect_ratio;
                             }
 

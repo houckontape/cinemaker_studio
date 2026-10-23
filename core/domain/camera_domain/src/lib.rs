@@ -1,9 +1,11 @@
 pub mod camera;
 pub mod camera_settings;
 pub mod liveview_domain;
+pub mod photo;
 pub use camera::*;
 pub use camera_settings::*;
 pub use liveview_domain::*;
+pub use photo::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CameraInfo {

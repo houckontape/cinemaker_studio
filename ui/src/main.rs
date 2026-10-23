@@ -3,6 +3,7 @@ pub mod adapters {
 }
 pub mod components {
     pub mod camera_panel;
+    pub mod timeline_panel;
 }
 pub mod liveview_panel;
 pub mod workspace_app;

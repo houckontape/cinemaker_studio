@@ -1,7 +1,9 @@
 pub mod camera_port;
 pub mod liveview_port;
+pub mod photo_port;
 pub use camera_port::*;
 pub use liveview_port::*;
+pub use photo_port::*;
 
 use camera_domain::{CameraInfo, Frame};
 
